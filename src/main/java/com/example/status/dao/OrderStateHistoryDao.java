@@ -1,7 +1,8 @@
 package com.example.status.dao;
 import com.example.status.entity.OrderStateHistoryEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
-import java.util.Optional;  
+import java.util.Optional;
+import java.util.List;
 
 public interface OrderStateHistoryDao extends JpaRepository<OrderStateHistoryEntity, Long> {
 
@@ -24,4 +25,8 @@ public interface OrderStateHistoryDao extends JpaRepository<OrderStateHistoryEnt
 
     boolean existsByFileId(String fileId);
 
-}   
+    List<OrderStateHistoryEntity> findByFileIdOrderByEventTimeDesc(String fileId);
+    
+    List<OrderStateHistoryEntity> findByOrderIdOrderByEventTimeDesc(String orderId);
+
+}

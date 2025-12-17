@@ -44,6 +44,9 @@ public class StatusStreamConsumer {
     @Autowired
     private OrderStateHistoryDao historyDao;
 
+    @Autowired
+    private SlaMonitoringService slaMonitoringService;
+
     @PostConstruct
     public void init() {
         System.out.println("Initializing StatusStreamConsumer...");
@@ -201,6 +204,7 @@ public class StatusStreamConsumer {
         String fileId = getStringValue(payload, "fileId", "files_id", "file_id");
         String orderId = getStringValue(payload, "orderId", "order_id");
         Integer distributorId = getIntValue(payload, "distributorId", "distributor_id", "firmId", "firm_id");
+        String mqid = getStringValue(payload, "mqid");
 
         if (status == null || sourceService == null) {
             System.err.println("Missing status/sourceService for record: " + recordId);
@@ -217,12 +221,27 @@ public class StatusStreamConsumer {
         entity.setFileId(fileId);
         entity.setOrderId(orderId);
         entity.setDistributorId(distributorId);
+        entity.setMqid(mqid);
         entity.setPreviousState(previousState);
         entity.setCurrentState(status);
         entity.setSourceService(sourceService);
         entity.setEventTime(eventTime);
 
         historyDao.save(entity);
+
+        // SLA Monitoring
+        System.out.println("DEBUG: SLA Check - Status: " + status + ", Service: " + (slaMonitoringService != null ? "Available" : "NULL"));
+        if (slaMonitoringService != null) {
+            if ("RECEIVED".equalsIgnoreCase(status) || "VALIDATED".equalsIgnoreCase(status)) {
+                System.out.println("DEBUG: Starting SLA tracking for: " + fileId + ", status: " + status);
+                slaMonitoringService.trackNewMessage(fileId, orderId, distributorId, mqid, status, sourceService);
+            } else if ("CONFIRMED".equalsIgnoreCase(status) || "COMPLETED".equalsIgnoreCase(status)) {
+                System.out.println("DEBUG: Resolving SLA for: " + fileId + ", status: " + status);
+                slaMonitoringService.resolveMessage(fileId, orderId, distributorId, mqid, status);
+            }
+        } else {
+            System.err.println("ERROR: SlaMonitoringService is NULL!");
+        }
 
         System.out.println("Saved to DB: fileId=" + fileId +
                 " orderId=" + orderId +
@@ -263,14 +282,13 @@ public class StatusStreamConsumer {
                     + sourceService + " (" + recordId + ")");
         }
 
-        if (fileId == null) {
-            if (historyDao.findTopByOrderIdOrderByEventTimeDesc(orderId).isEmpty()) {
-                throw new IllegalStateException("orderId " + orderId + " not seen yet from trade-capture ("
-                        + recordId + ")");
-            }
-        } else if (!historyDao.existsByFileId(fileId)) {
-            throw new IllegalStateException("fileId " + fileId + " not found yet for order: " + orderId
-                    + " (" + recordId + ")");
+        // Relaxed validation - allow messages even if references don't exist yet
+        // This handles out-of-order message processing
+        if (fileId != null && !historyDao.existsByFileId(fileId)) {
+            System.out.println("Warning: fileId " + fileId + " not found yet, but allowing message (" + recordId + ")");
+        }
+        if (fileId == null && historyDao.findTopByOrderIdOrderByEventTimeDesc(orderId).isEmpty()) {
+            System.out.println("Warning: orderId " + orderId + " not seen yet, but allowing message (" + recordId + ")");
         }
     }
 
