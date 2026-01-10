@@ -27,9 +27,6 @@ public class OrderStateHistoryEntity {
     @Column(name = "distributor_id")
     private Integer distributorId;
 
-    @Column(name = "mqid")
-    private String mqid;
-
     @Column(name = "previous_state")
     private String previousState;
 

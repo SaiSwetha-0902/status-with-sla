@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.example.status.dao.OrderStateHistoryDao;
 import com.example.status.entity.OrderStateHistoryEntity;
@@ -19,7 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.data.redis.connection.stream.StreamRecords;
 
 @Service
 public class StatusStreamConsumer {
@@ -47,36 +47,25 @@ public class StatusStreamConsumer {
     @Autowired
     private SlaMonitoringService slaMonitoringService;
 
-    @PostConstruct
-    public void init() {
-        System.out.println("Initializing StatusStreamConsumer...");
-        Thread t = new Thread(() -> {
-            try {
-                System.out.println("Consumer thread starting, waiting 2 seconds...");
-                Thread.sleep(2000);
-                System.out.println("Starting to consume from stream: " + STREAM_KEY);
-                startConsuming();
-            } catch (InterruptedException e) {
-                System.err.println("Consumer thread interrupted");
-                Thread.currentThread().interrupt();
+     @PostConstruct
+    public void initGroup() {
+        try {
+            redisTemplate.opsForStream().createGroup(STREAM_KEY, GROUP_NAME);
+            System.out.println("Consumer group created: " + GROUP_NAME);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+                System.out.println(" Consumer group already exists: " + GROUP_NAME);
+            } else {
+                System.err.println(" Failed to create consumer group: " + e.getMessage());
             }
-        }, "status-stream-consumer");
-        t.setDaemon(true);
-        t.start();
-        System.out.println("Consumer thread started");
+        }
     }
 
+    @Scheduled(fixedDelay = 10000)
     private void startConsuming() {
         System.out.println("Consumer loop started for stream: " + STREAM_KEY + ", group: " + GROUP_NAME);
-        while (true) {
+        
             try {
-                try {
-                    redisTemplate.opsForStream().createGroup(STREAM_KEY, GROUP_NAME);
-                    System.out.println("Consumer group created or already exists");
-                } catch (Exception e) {
-                    System.out.println("Group creation skipped: " + e.getMessage());
-                }
-                reclaimPending(Duration.ofSeconds(30), 50);
                 StreamOffset<String> offset = StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed());
                 List<MapRecord<String, Object, Object>> messages = redisTemplate.opsForStream().read(
                         Consumer.from(GROUP_NAME, CONSUMER_NAME),
@@ -87,75 +76,51 @@ public class StatusStreamConsumer {
                     for (MapRecord<String, Object, Object> message : messages) {
                         handleWithAck(message);
                     }
+                }else{
+                    System.out.println("No new messages to process");
+                    return;
                 }
 
             } catch (Exception e) {
                 System.err.println("Error while reading stream: " + e.getMessage());
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+                
             }
-        }
+        
     }
 
-    private void handleWithAck(MapRecord<String, Object, Object> message) {
-        String recordId = message.getId().getValue();
-        Map<Object, Object> data = message.getValue();
+   private void handleWithAck(MapRecord<String, Object, Object> message) {
+    String recordId = message.getId().getValue();
+    Map<Object, Object> data = message.getValue();
+
+    int attempts = 0;
+    boolean success = false;
+
+    while (attempts < 3) {
         try {
-            boolean processed = writeToDatabase(recordId, data);
-            if (processed) {
-                redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP_NAME, message.getId());
-                System.out.println("ACK SENT for " + recordId);
-                redisTemplate.opsForStream().delete(STREAM_KEY, message.getId());
-            } else {
-                System.err.println("Processing failed, leaving pending for retry: " + recordId);
-            }
+            attempts++;
+            success = writeToDatabase(recordId, data);
+
+            if (success) break;
 
         } catch (Exception e) {
-            System.err.println("DB failed. Message NOT ACKED: " + recordId);
-            e.printStackTrace();
+            System.err.println("DB error attempt " + attempts + " for " + recordId + ": " + e.getMessage());
         }
     }
 
-    private void reclaimPending(Duration minIdle, int batchSize) {
-        try {
-            PendingMessages pending = redisTemplate.opsForStream().pending(STREAM_KEY, GROUP_NAME, Range.unbounded(),
-                    batchSize);
-            if (pending == null || pending.isEmpty()) {
-                return;
-            }
+    if (success) {
+        redisTemplate.opsForStream().acknowledge(STREAM_KEY, GROUP_NAME, message.getId());
+        redisTemplate.opsForStream().delete(STREAM_KEY, message.getId());
+        System.out.println("ACK SENT after " + attempts + " attempts for " + recordId);
 
-            List<RecordId> toClaim = new ArrayList<>();
-            for (PendingMessage pm : pending) {
-                long deliveries = pm.getTotalDeliveryCount();
-                if (deliveries >= MAX_DELIVERY_ATTEMPTS) {
-                    moveToDlq(pm.getId(), deliveries, "Exceeded max retry attempts");
-                    continue;
-                }
-                if (pm.getElapsedTimeSinceLastDelivery().compareTo(minIdle) >= 0) {
-                    toClaim.add(pm.getId());
-                }
-            }
-
-            if (toClaim.isEmpty()) {
-                return;
-            }
-
-            List<MapRecord<String, Object, Object>> claimed = redisTemplate.opsForStream().claim(
-                    STREAM_KEY, GROUP_NAME, CONSUMER_NAME, minIdle, toClaim.toArray(new RecordId[0]));
-
-            if (claimed != null) {
-                for (MapRecord<String, Object, Object> record : claimed) {
-                    handleWithAck(record);
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to reclaim pending messages: " + e.getMessage());
-        }
+    } else {
+        System.err.println("FAILED after 3 attempts. Moving to DLQ: " + recordId);
+        moveToDlq(message.getId(), attempts, "DB failures");
     }
+    
+}
+
+
+            
 
     private void moveToDlq(RecordId recordId, long attempts, String reason) {
         try {
@@ -204,7 +169,6 @@ public class StatusStreamConsumer {
         String fileId = getStringValue(payload, "fileId", "files_id", "file_id");
         String orderId = getStringValue(payload, "orderId", "order_id");
         Integer distributorId = getIntValue(payload, "distributorId", "distributor_id", "firmId", "firm_id");
-        String mqid = getStringValue(payload, "mqid");
 
         if (status == null || sourceService == null) {
             System.err.println("Missing status/sourceService for record: " + recordId);
@@ -221,7 +185,6 @@ public class StatusStreamConsumer {
         entity.setFileId(fileId);
         entity.setOrderId(orderId);
         entity.setDistributorId(distributorId);
-        entity.setMqid(mqid);
         entity.setPreviousState(previousState);
         entity.setCurrentState(status);
         entity.setSourceService(sourceService);
@@ -229,19 +192,6 @@ public class StatusStreamConsumer {
 
         historyDao.save(entity);
 
-        // SLA Monitoring
-        System.out.println("DEBUG: SLA Check - Status: " + status + ", Service: " + (slaMonitoringService != null ? "Available" : "NULL"));
-        if (slaMonitoringService != null) {
-            if ("RECEIVED".equalsIgnoreCase(status) || "VALIDATED".equalsIgnoreCase(status)) {
-                System.out.println("DEBUG: Starting SLA tracking for: " + fileId + ", status: " + status);
-                slaMonitoringService.trackNewMessage(fileId, orderId, distributorId, mqid, status, sourceService);
-            } else if ("CONFIRMED".equalsIgnoreCase(status) || "COMPLETED".equalsIgnoreCase(status)) {
-                System.out.println("DEBUG: Resolving SLA for: " + fileId + ", status: " + status);
-                slaMonitoringService.resolveMessage(fileId, orderId, distributorId, mqid, status);
-            }
-        } else {
-            System.err.println("ERROR: SlaMonitoringService is NULL!");
-        }
 
         System.out.println("Saved to DB: fileId=" + fileId +
                 " orderId=" + orderId +
@@ -249,22 +199,63 @@ public class StatusStreamConsumer {
                 previousState + " -> " + status +
                 " (source: " + sourceService + ")");
 
+
+        historyDao.save(entity);
+
+        try {
+            System.out.println("DEBUG: SLA Check - Status: " + status + ", Service: " + (slaMonitoringService != null ? "Available" : "NULL"));
+            if (slaMonitoringService != null) {
+                if ("RECEIVED".equalsIgnoreCase(status) || "VALIDATED".equalsIgnoreCase(status)) {
+                    slaMonitoringService.trackNewMessage(fileId, orderId, distributorId, status, sourceService);
+                } else if ("CONFIRMED".equalsIgnoreCase(status) || "COMPLETED".equalsIgnoreCase(status)) {
+                    slaMonitoringService.resolveMessage(fileId, orderId, distributorId, status);
+                }
+            } else {
+                System.err.println("ERROR: SlaMonitoringService is NULL!");
+            }
+        } catch (Exception ex) {
+            System.err.println("WARN: SLA monitoring failed for record " + recordId + ": " + ex.getMessage());
+        }
+
         return true;
+    }
+
+    private Map<String, Object> parseSimpleKeyValueString(String str) {
+        Map<String, Object> map = new java.util.HashMap<>();
+        if (str == null) return map;
+        String cleaned = str.replaceAll("[{}]", "").trim();
+        if (cleaned.isEmpty()) return map;
+        for (String pair : cleaned.split(",")) {
+            String[] kv = pair.split(":", 2);
+            if (kv.length == 2) {
+                map.put(kv[0].trim(), kv[1].trim());
+            }
+        }
+        return map;
     }
 
     private Map<String, Object> parsePayload(Object payloadObj) {
         if (payloadObj == null) {
             return null;
         }
+        Map<String, Object> payloadMap = new java.util.HashMap<>();
         if (payloadObj instanceof Map) {
-            return new java.util.HashMap<>((Map<String, Object>) payloadObj);
+            Map<Object, Object> rawMap = (Map<Object, Object>) payloadObj;
+            for (Map.Entry<Object, Object> entry : rawMap.entrySet()) {
+                payloadMap.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return payloadMap;
         }
-        String raw = payloadObj.toString();
+        String payloadStr = (payloadObj instanceof String)
+            ? (String) payloadObj
+            : payloadObj.toString();
+        ObjectMapper objectMapper = new ObjectMapper();
         try {
-            return new ObjectMapper().readValue(raw, Map.class);
+            payloadMap = objectMapper.readValue(payloadStr, Map.class);
+            return payloadMap;
         } catch (Exception ex) {
-            System.err.println("Failed to parse payload: " + raw);
-            return null;
+            System.out.println("JSON parse failed, fallback for: " + payloadStr);
+            return parseSimpleKeyValueString(payloadStr);
         }
     }
 
@@ -282,13 +273,14 @@ public class StatusStreamConsumer {
                     + sourceService + " (" + recordId + ")");
         }
 
-        // Relaxed validation - allow messages even if references don't exist yet
-        // This handles out-of-order message processing
-        if (fileId != null && !historyDao.existsByFileId(fileId)) {
-            System.out.println("Warning: fileId " + fileId + " not found yet, but allowing message (" + recordId + ")");
-        }
-        if (fileId == null && historyDao.findTopByOrderIdOrderByEventTimeDesc(orderId).isEmpty()) {
-            System.out.println("Warning: orderId " + orderId + " not seen yet, but allowing message (" + recordId + ")");
+        if (fileId == null) {
+            if (historyDao.findTopByOrderIdOrderByEventTimeDesc(orderId).isEmpty()) {
+                throw new IllegalStateException("orderId " + orderId + " not seen yet from trade-capture ("
+                        + recordId + ")");
+            }
+        } else if (!historyDao.existsByFileId(fileId)) {
+            throw new IllegalStateException("fileId " + fileId + " not found yet for order: " + orderId
+                    + " (" + recordId + ")");
         }
     }
 

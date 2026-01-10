@@ -22,5 +22,5 @@ public interface SlaMonitoringDao extends JpaRepository<SlaMonitoringEntity, Lon
     
     Optional<SlaMonitoringEntity> findByOrderIdAndDistributorIdAndCurrentStateAndIsResolvedFalse(String orderId, Integer distributorId, String currentState);
     
-    Optional<SlaMonitoringEntity> findByMqidAndCurrentStateAndIsResolvedFalse(String mqid, String currentState);
+
 }

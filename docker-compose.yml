@@ -5,10 +5,12 @@ services:
   postgres:
     image: postgres:15
     container_name: postgres
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: rayzriyaz
-      POSTGRES_DB: status_track
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
@@ -97,17 +99,20 @@ services:
       - redinet
     depends_on:
       - redis-master
+
   app:
     build: .
     container_name: status-tracking-app
+    env_file:
+      - .env
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/status_track
-      - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=rayzriyaz
-      - SPRING_DATA_REDIS_HOST=host.docker.internal
-      - SPRING_DATA_REDIS_PORT=6379
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      SPRING_DATA_REDIS_SENTINEL_MASTER: mymaster
+      SPRING_DATA_REDIS_SENTINEL_NODES: sentinel1:26379,sentinel2:26379,sentinel3:26379
     ports:
-      - "8085:8080"
+      - "8085:8085"
     networks:
       - redinet
     depends_on:

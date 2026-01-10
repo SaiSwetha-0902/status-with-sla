@@ -27,9 +27,6 @@ public class SlaMonitoringEntity {
     @Column(name = "distributor_id")
     private Integer distributorId;
 
-    @Column(name = "mqid")
-    private String mqid;
-
     @Column(name = "current_state", nullable = false)
     private String currentState;
 

@@ -24,14 +24,12 @@ public class SlaMonitoringService {
 
     private static final int SLA_MINUTES = 15;
 
-    public void trackNewMessage(String fileId, String orderId, Integer distributorId, String mqid, 
-                               String currentState, String sourceService) {
+    public void trackNewMessage(String fileId, String orderId, Integer distributorId,String currentState, String sourceService) {
         
         SlaMonitoringEntity slaEntity = new SlaMonitoringEntity();
         slaEntity.setFileId(fileId);
         slaEntity.setOrderId(orderId);
         slaEntity.setDistributorId(distributorId);
-        slaEntity.setMqid(mqid);
         slaEntity.setCurrentState(currentState);
         slaEntity.setSourceService(sourceService);
         slaEntity.setReceivedTime(LocalDateTime.now());
@@ -42,8 +40,8 @@ public class SlaMonitoringService {
         log.info("SLA tracking started for {} with deadline: {}", getIdentifier(slaEntity), slaEntity.getSlaDeadline());
     }
 
-    public void resolveMessage(String fileId, String orderId, Integer distributorId, String mqid, String resolvedState) {
-        Optional<SlaMonitoringEntity> slaRecord = findActiveRecord(fileId, orderId, distributorId, mqid);
+    public void resolveMessage(String fileId, String orderId, Integer distributorId, String resolvedState) {
+        Optional<SlaMonitoringEntity> slaRecord = findActiveRecord(fileId, orderId, distributorId);
         
         if (slaRecord.isPresent()) {
             SlaMonitoringEntity entity = slaRecord.get();
@@ -58,8 +56,6 @@ public class SlaMonitoringService {
     @Scheduled(fixedRate = 60000) 
     public void checkSlaCompliance() {
         LocalDateTime currentTime = LocalDateTime.now();
-        
-       
         List<SlaMonitoringEntity> breachedRecords = slaMonitoringDao.findSlaBreachedRecords(currentTime);
         
         for (SlaMonitoringEntity record : breachedRecords) {
@@ -87,11 +83,9 @@ public class SlaMonitoringService {
         }
     }
 
-    private Optional<SlaMonitoringEntity> findActiveRecord(String fileId, String orderId, Integer distributorId, String mqid) {
+    private Optional<SlaMonitoringEntity> findActiveRecord(String fileId, String orderId, Integer distributorId) {
         if (fileId != null) {
             return slaMonitoringDao.findByFileIdAndCurrentStateAndIsResolvedFalse(fileId, "RECEIVED");
-        } else if (mqid != null) {
-            return slaMonitoringDao.findByMqidAndCurrentStateAndIsResolvedFalse(mqid, "RECEIVED");
         } else if (orderId != null && distributorId != null) {
             return slaMonitoringDao.findByOrderIdAndDistributorIdAndCurrentStateAndIsResolvedFalse(orderId, distributorId, "RECEIVED");
         }
@@ -100,7 +94,6 @@ public class SlaMonitoringService {
 
     private String getIdentifier(SlaMonitoringEntity entity) {
         if (entity.getFileId() != null) return "FileId:" + entity.getFileId();
-        if (entity.getMqid() != null) return "MqId:" + entity.getMqid();
         if (entity.getOrderId() != null) return "OrderId:" + entity.getOrderId();
         return "Unknown";
     }
