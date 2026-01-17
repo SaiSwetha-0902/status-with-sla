@@ -22,5 +22,9 @@ public interface SlaMonitoringDao extends JpaRepository<SlaMonitoringEntity, Lon
     
     Optional<SlaMonitoringEntity> findByOrderIdAndDistributorIdAndCurrentStateAndIsResolvedFalse(String orderId, Integer distributorId, String currentState);
     
-
+    @Query("SELECT COUNT(s) FROM SlaMonitoringEntity s WHERE s.isResolved = false")
+    long countUnresolvedRecords();
+    
+    @Query("SELECT COUNT(s) FROM SlaMonitoringEntity s WHERE s.isSlaBreached = true")
+    long countBreachedRecords();
 }

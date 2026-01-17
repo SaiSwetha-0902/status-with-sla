@@ -5,6 +5,7 @@ import com.example.status.entity.SlaMonitoringEntity;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -14,6 +15,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/sla")
+@CrossOrigin(origins = "http://localhost:4200")
 @Tag(name = "SLA Monitoring", description = "SLA monitoring and tracking endpoints")
 public class SlaController {
 
@@ -21,7 +23,7 @@ public class SlaController {
     private SlaMonitoringDao slaMonitoringDao;
 
     @GetMapping("/breached")
-    @Operation(summary = "Get SLA breached records", description = "Returns all records that have breached the 15-minute SLA")
+    @Operation(summary = "Get SLA breached records", description = "Returns all records that have breached their service-specific SLA deadlines")
     public List<SlaMonitoringEntity> getSlaBreachedRecords() {
         return slaMonitoringDao.findSlaBreachedRecords(LocalDateTime.now());
     }

@@ -1,0 +1,149 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "SLA Monitoring Dashboard",
+    "tags": ["sla", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Unresolved SLA Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sla_unresolved_count",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 5
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "SLA Breached Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sla_breached_count",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 1
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "SLA Resolution Time",
+        "type": "histogram",
+        "targets": [
+          {
+            "expr": "rate(sla_resolution_time_sum[5m]) / rate(sla_resolution_time_count[5m])",
+            "refId": "A",
+            "legendFormat": "Average Resolution Time"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": 4,
+        "title": "Unresolved SLA Over Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sla_unresolved_count",
+            "refId": "A",
+            "legendFormat": "Unresolved Count"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        }
+      },
+      {
+        "id": 5,
+        "title": "SLA Breaches Over Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "increase(sla_breached_count[5m])",
+            "refId": "A",
+            "legendFormat": "Breaches"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 0,
+    "links": []
+  }
+}
