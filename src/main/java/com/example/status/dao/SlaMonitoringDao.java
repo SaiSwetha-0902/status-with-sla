@@ -12,7 +12,7 @@ import java.util.Optional;
 @Repository
 public interface SlaMonitoringDao extends JpaRepository<SlaMonitoringEntity, Long> {
 
-    @Query("SELECT s FROM SlaMonitoringEntity s WHERE s.isResolved = false AND s.slaDeadline <= :currentTime AND s.isSlaBreached = false")
+    @Query("SELECT s FROM SlaMonitoringEntity s WHERE s.isResolved = false AND s.slaDeadline <= :currentTime AND s.isSlaBreached = false AND TIMESTAMPDIFF(MINUTE, s.slaDeadline, :currentTime) >= 15")
     List<SlaMonitoringEntity> findSlaBreachedRecords(LocalDateTime currentTime);
 
     @Query("SELECT s FROM SlaMonitoringEntity s WHERE s.isResolved = false")
@@ -22,9 +22,13 @@ public interface SlaMonitoringDao extends JpaRepository<SlaMonitoringEntity, Lon
     
     Optional<SlaMonitoringEntity> findByOrderIdAndDistributorIdAndCurrentStateAndIsResolvedFalse(String orderId, Integer distributorId, String currentState);
     
+    Optional<SlaMonitoringEntity> findFirstByFileIdAndIsResolvedFalseOrderByReceivedTimeDesc(String fileId);
+    
+    Optional<SlaMonitoringEntity> findFirstByOrderIdAndDistributorIdAndIsResolvedFalseOrderByReceivedTimeDesc(String orderId, Integer distributorId);
+    
     @Query("SELECT COUNT(s) FROM SlaMonitoringEntity s WHERE s.isResolved = false")
     long countUnresolvedRecords();
     
-    @Query("SELECT COUNT(s) FROM SlaMonitoringEntity s WHERE s.isSlaBreached = true")
+    @Query("SELECT COUNT(s) FROM SlaMonitoringEntity s WHERE s.isSlaBreached = true AND TIMESTAMPDIFF(MINUTE, s.slaDeadline, s.breachTime) >= 15")
     long countBreachedRecords();
 }

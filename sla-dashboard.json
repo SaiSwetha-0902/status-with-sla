@@ -1,8 +1,8 @@
 {
   "dashboard": {
     "id": null,
-    "title": "SLA Monitoring Dashboard",
-    "tags": ["sla", "monitoring"],
+    "title": "SLA Breach Monitoring - Severe Breaches (15+ min)",
+    "tags": ["sla", "monitoring", "breaches"],
     "timezone": "browser",
     "panels": [
       {
@@ -30,8 +30,10 @@
                   "value": 5
                 }
               ]
-            }
-          }
+            },
+            "displayName": "Unresolved SLA Records"
+          },
+          "overrides": []
         },
         "gridPos": {
           "h": 8,
@@ -42,7 +44,7 @@
       },
       {
         "id": 2,
-        "title": "SLA Breached Count",
+        "title": "Severe SLA Breaches (15+ min past deadline)",
         "type": "stat",
         "targets": [
           {
@@ -65,8 +67,10 @@
                   "value": 1
                 }
               ]
-            }
-          }
+            },
+            "displayName": "Severe SLA Breaches"
+          },
+          "overrides": []
         },
         "gridPos": {
           "h": 8,
@@ -86,6 +90,12 @@
             "legendFormat": "Average Resolution Time"
           }
         ],
+        "fieldConfig": {
+          "defaults": {
+            "displayName": "Resolution Time (seconds)"
+          },
+          "overrides": []
+        },
         "gridPos": {
           "h": 8,
           "w": 24,
@@ -113,13 +123,13 @@
       },
       {
         "id": 5,
-        "title": "SLA Breaches Over Time",
+        "title": "Severe SLA Breaches Over Time (15+ min)",
         "type": "graph",
         "targets": [
           {
             "expr": "increase(sla_breached_count[5m])",
             "refId": "A",
-            "legendFormat": "Breaches"
+            "legendFormat": "Severe Breaches"
           }
         ],
         "gridPos": {

@@ -118,11 +118,8 @@ public class StatusStreamConsumer {
     }
     
 }
-
-
-            
-
-    private void moveToDlq(RecordId recordId, long attempts, String reason) {
+        
+private void moveToDlq(RecordId recordId, long attempts, String reason) {
         try {
             List<MapRecord<String, Object, Object>> original = redisTemplate.opsForStream().range(
                     STREAM_KEY,
@@ -205,10 +202,15 @@ public class StatusStreamConsumer {
         try {
             System.out.println("DEBUG: SLA Check - Status: " + status + ", Service: " + (slaMonitoringService != null ? "Available" : "NULL"));
             if (slaMonitoringService != null) {
-                if ("RECEIVED".equalsIgnoreCase(status) || "VALIDATED".equalsIgnoreCase(status)) {
-                    slaMonitoringService.trackNewMessage(fileId, orderId, distributorId, status, sourceService);
-                } else if ("CONFIRMED".equalsIgnoreCase(status) || "COMPLETED".equalsIgnoreCase(status)) {
+                // Resolve previous SLA record when transitioning to a new state
+                if (previousState != null) {
                     slaMonitoringService.resolveMessage(fileId, orderId, distributorId, status);
+                }
+                
+                // Track new SLA for current state (except terminal states)
+                if ("RECEIVED".equalsIgnoreCase(status) || "VALIDATED".equalsIgnoreCase(status) || 
+                    "PROCESSED".equalsIgnoreCase(status)) {
+                    slaMonitoringService.trackNewMessage(fileId, orderId, distributorId, status, sourceService);
                 }
             } else {
                 System.err.println("ERROR: SlaMonitoringService is NULL!");

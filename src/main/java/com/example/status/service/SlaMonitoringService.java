@@ -172,9 +172,9 @@ public class SlaMonitoringService {
 
     private Optional<SlaMonitoringEntity> findActiveRecord(String fileId, String orderId, Integer distributorId) {
         if (fileId != null) {
-            return slaMonitoringDao.findByFileIdAndCurrentStateAndIsResolvedFalse(fileId, "RECEIVED");
+            return slaMonitoringDao.findFirstByFileIdAndIsResolvedFalseOrderByReceivedTimeDesc(fileId);
         } else if (orderId != null && distributorId != null) {
-            return slaMonitoringDao.findByOrderIdAndDistributorIdAndCurrentStateAndIsResolvedFalse(orderId, distributorId, "RECEIVED");
+            return slaMonitoringDao.findFirstByOrderIdAndDistributorIdAndIsResolvedFalseOrderByReceivedTimeDesc(orderId, distributorId);
         }
         return Optional.empty();
     }
